@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Bell, MessageCircle, CheckCircle, Trash2 } from 'lucide-react';
+import { X, Bell, MessageCircle, CheckCircle, Trash2, UserPlus, Check } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -105,9 +105,47 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
       case 'complaint_reply':
         return <MessageCircle className="w-5 h-5 text-blue-600" />;
       case 'friend_request':
-        return <Bell className="w-5 h-5 text-green-600" />;
+        return <UserPlus className="w-5 h-5 text-green-600" />;
       default:
         return <Bell className="w-5 h-5 text-gray-600" />;
+    }
+  };
+
+  const handleFriendRequestAction = async (notificationId: string, requestId: string, action: 'accept' | 'reject') => {
+    try {
+      const { error } = await supabase
+        .from('friend_requests')
+        .update({ status: action === 'accept' ? 'accepted' : 'rejected' })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      if (action === 'accept') {
+        // Get request details to create friendship
+        const { data: request } = await supabase
+          .from('friend_requests')
+          .select('sender_id, receiver_id')
+          .eq('id', requestId)
+          .single();
+
+        if (request) {
+          // Create friendship (both directions)
+          await supabase
+            .from('friends')
+            .insert([
+              { user_id: request.receiver_id, friend_id: request.sender_id },
+              { user_id: request.sender_id, friend_id: request.receiver_id }
+            ]);
+        }
+      }
+
+      // Mark notification as read and remove it
+      await deleteNotification(notificationId);
+      
+      alert(action === 'accept' ? 'Friend request accepted!' : 'Friend request rejected.');
+    } catch (error) {
+      console.error('Error handling friend request:', error);
+      alert('Failed to process friend request.');
     }
   };
 
@@ -185,6 +223,26 @@ const NotificationPanel: React.FC<NotificationPanelProps> = ({ onClose }) => {
                           <p className={`text-xs ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                             {formatTime(notification.created_at)}
                           </p>
+                          
+                          {/* Friend request action buttons */}
+                          {notification.type === 'friend_request' && notification.data?.request_id && (
+                            <div className="flex items-center space-x-2 mt-2">
+                              <button
+                                onClick={() => handleFriendRequestAction(notification.id, notification.data.request_id, 'accept')}
+                                className="flex items-center space-x-1 px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs transition-colors duration-200"
+                              >
+                                <Check className="w-3 h-3" />
+                                <span>Accept</span>
+                              </button>
+                              <button
+                                onClick={() => handleFriendRequestAction(notification.id, notification.data.request_id, 'reject')}
+                                className="flex items-center space-x-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors duration-200"
+                              >
+                                <X className="w-3 h-3" />
+                                <span>Reject</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                           {!notification.read && (

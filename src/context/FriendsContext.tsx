@@ -68,92 +68,34 @@ export const FriendsProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const loadFriends = async () => {
     if (!user) return;
 
-    const { data: friendsData, error } = await supabase
-      .from('friends')
-      .select('id, user_id, friend_id, created_at')
-      .eq('user_id', user.id);
+    const { data: friendsData, error } = await supabase.rpc('get_user_friends', {
+      target_user_id: user.id
+    });
 
     if (error) {
       console.error('Error loading friends:', error);
       return;
     }
 
-    if (!friendsData || friendsData.length === 0) {
-      setFriends([]);
-      return;
-    }
-
-    // Get friend user details separately
-    const friendIds = friendsData.map(f => f.friend_id);
-    const { data: usersData, error: usersError } = await supabase
-      .from('users')
-      .select('id, name, email')
-      .in('id', friendIds);
-
-    if (usersError) {
-      console.error('Error loading friend user details:', usersError);
-      return;
-    }
-
-    // Map friend details to friends data
-    const friendsWithDetails = friendsData.map(f => {
-      const friendUser = usersData?.find(u => u.id === f.friend_id);
-      return {
-        id: f.id,
-        user_id: f.user_id,
-        friend_id: f.friend_id,
-        friend_name: friendUser?.name || 'Unknown',
-        friend_email: friendUser?.email || '',
-        created_at: f.created_at
-      };
-    });
-
-    setFriends(friendsWithDetails);
+    setFriends(friendsData || []);
   };
 
   const loadFriendRequests = async () => {
     if (!user) return;
 
-    const { data: requestsData, error } = await supabase
-      .from('friend_requests')
-      .select('id, sender_id, receiver_id, status, created_at')
-      .eq('receiver_id', user.id)
-      .eq('status', 'pending');
+    const { data: requestsData, error } = await supabase.rpc('get_user_friend_requests', {
+      target_user_id: user.id
+    });
 
     if (error) {
       console.error('Error loading friend requests:', error);
       return;
     }
 
-    if (!requestsData || requestsData.length === 0) {
-      setFriendRequests([]);
-      return;
-    }
-
-    // Get sender user details separately
-    const senderIds = requestsData.map(r => r.sender_id);
-    const { data: usersData, error: usersError } = await supabase
-      .from('users')
-      .select('id, name, email')
-      .in('id', senderIds);
-
-    if (usersError) {
-      console.error('Error loading sender user details:', usersError);
-      return;
-    }
-
-    // Map sender details to requests data
-    const requestsWithDetails = requestsData.map(r => {
-      const senderUser = usersData?.find(u => u.id === r.sender_id);
-      return {
-        ...r,
-        sender_name: senderUser?.name || 'Unknown',
-        sender_email: senderUser?.email || '',
-        status: r.status as 'pending' | 'accepted' | 'rejected'
-      };
-    });
-
-    setFriendRequests(requestsWithDetails);
+    setFriendRequests(requestsData?.map(r => ({
+      ...r,
+      status: r.status as 'pending' | 'accepted' | 'rejected'
+    })) || []);
   };
 
   const loadStudySessions = async () => {
@@ -294,42 +236,18 @@ export const FriendsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!user) return false;
 
     try {
-      // Find user by email
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('id')
-        .eq('email', email)
-        .single();
-
-      if (userError || !userData) {
-        throw new Error('User not found');
-      }
-
-      if (userData.id === user.id) {
-        throw new Error('Cannot send friend request to yourself');
-      }
-
-      // Check if already friends
-      const { data: existingFriend } = await supabase
-        .from('friends')
-        .select('id')
-        .or(`and(user_id.eq.${user.id},friend_id.eq.${userData.id}),and(user_id.eq.${userData.id},friend_id.eq.${user.id})`)
-        .single();
-
-      if (existingFriend) {
-        throw new Error('Already friends with this user');
-      }
-
-      // Send friend request
-      const { error } = await supabase
-        .from('friend_requests')
-        .insert({
-          sender_id: user.id,
-          receiver_id: userData.id
-        });
+      const { data, error } = await supabase.rpc('send_friend_request_safe', {
+        sender_user_id: user.id,
+        receiver_email: email.trim()
+      });
 
       if (error) throw error;
-      return true;
+      
+      if (!data.success) {
+        throw new Error(data.error);
+      }
+      
+      return data.success;
     } catch (error) {
       console.error('Error sending friend request:', error);
       return false;
