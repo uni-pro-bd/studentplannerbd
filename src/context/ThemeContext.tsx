@@ -53,13 +53,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         .eq('user_id', user.id)
         .single();
 
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error loading preferences:', error);
-      }
-
       if (data) {
         setIsDarkMode(data.dark_mode);
-      } else {
+      } else if (error && error.code === 'PGRST116') {
         // Create default preferences with dark mode
         setIsDarkMode(true);
         await supabase
@@ -69,6 +65,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             dark_mode: true,
             notifications: true
           });
+      } else if (error) {
+        console.error('Error loading preferences:', error);
+        setIsDarkMode(true);
       }
     } catch (error) {
       console.error('Error loading preferences:', error);
