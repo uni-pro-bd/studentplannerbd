@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Calendar, BookOpen, LogOut, Heart, X, Users, Eye, Moon, Sun, FileText, AlertCircle, User, Bell, MessageCircle, Shield, UserPlus } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseReady } from '../lib/supabase';
 import ComplaintForm from './ComplaintForm';
 import Profile from './Profile';
 import NotificationPanel from './NotificationPanel';
@@ -40,6 +40,11 @@ const Sidebar: React.FC = () => {
 
   const loadUnreadCount = async () => {
     if (!user) return;
+
+    // Don't attempt to load if Supabase is not configured
+    if (!isSupabaseReady) {
+      return;
+    }
 
     try {
       const { count, error } = await supabase
